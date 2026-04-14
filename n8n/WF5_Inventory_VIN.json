@@ -1,0 +1,34 @@
+{
+  "name": "AKAR CRM - WF5 Inventory + VIN",
+  "nodes": [
+    {"id":"n1","name":"Booking Created Trigger","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[170,180],"parameters":{"httpMethod":"POST","path":"akar/booking-created","responseMode":"responseNode"}},
+    {"id":"n2","name":"Find Available VIN","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[380,180],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Inventory","filtersUI":{"values":[{"lookupColumn":"model","lookupValue":"={{$json.body.model}}"},{"lookupColumn":"variant","lookupValue":"={{$json.body.variant}}"},{"lookupColumn":"status","lookupValue":"AVAILABLE"}]}}},
+    {"id":"n3","name":"Stock Available?","type":"n8n-nodes-base.if","typeVersion":2,"position":[590,180],"parameters":{"conditions":{"number":[{"value1":"={{$items('Find Available VIN').length}}","operation":"larger","value2":0}]}}},
+    {"id":"n4","name":"Allocate VIN To Booking","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[800,100],"parameters":{"operation":"update","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Bookings","columns":{"mappingMode":"defineBelow","value":{"vin":"={{$item(0).$node['Find Available VIN'].json.vin}}","status":"ALLOCATED"}},"matchingColumns":["bookingId"]}},
+    {"id":"n5","name":"Update Inventory ALLOCATED","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[1010,100],"parameters":{"operation":"update","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Inventory","columns":{"mappingMode":"defineBelow","value":{"status":"ALLOCATED"}},"matchingColumns":["vin"]}},
+    {"id":"n6","name":"Add Waiting List","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[800,260],"parameters":{"operation":"append","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Waiting_List","columns":{"mappingMode":"defineBelow","value":{"leadId":"={{$json.body.leadId}}","model":"={{$json.body.model}}","variant":"={{$json.body.variant}}","priority":"={{$json.body.priority || 'NORMAL'}}","date":"={{new Date().toISOString().slice(0,10)}}"}}}},
+    {"id":"n7","name":"Notify WF7 Allocation","type":"n8n-nodes-base.executeWorkflow","typeVersion":1,"position":[1220,100],"parameters":{"workflowId":"AKAR-WF7-NOTIFICATIONS","input":"={{ {eventType:'VIN_ALLOCATED', bookingId:$json.body.bookingId} }}"}},
+    {"id":"n8","name":"Done","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1430,180],"parameters":{"responseCode":200,"responseBody":"={\"status\":\"Inventory processed\"}"}},
+    {"id":"n9","name":"Inventory Sync Cron","type":"n8n-nodes-base.cron","typeVersion":1,"position":[170,430],"parameters":{"triggerTimes":{"item":[{"mode":"everyX","value":1,"unit":"hours"}]}}},
+    {"id":"n10","name":"Read Waiting List","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[380,430],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Waiting_List"}},
+    {"id":"n11","name":"Attempt Auto Allocate","type":"n8n-nodes-base.executeWorkflow","typeVersion":1,"position":[590,430],"parameters":{"workflowId":"AKAR-WF5-INVENTORY-VIN","input":"={{ {eventType:'AUTO_ALLOCATE', waiting:$json} }}"}},
+    {"id":"n12","name":"Cancellation Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[170,620],"parameters":{"httpMethod":"POST","path":"akar/booking-cancel","responseMode":"responseNode"}},
+    {"id":"n13","name":"Release VIN","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[380,620],"parameters":{"operation":"update","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Inventory","columns":{"mappingMode":"defineBelow","value":{"status":"AVAILABLE"}},"matchingColumns":["vin"]}},
+    {"id":"n14","name":"Cancel Response","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[590,620],"parameters":{"responseCode":200,"responseBody":"={\"status\":\"VIN released\"}"}}
+  ],
+  "connections":{
+    "Booking Created Trigger":{"main":[[{"node":"Find Available VIN","type":"main","index":0}]]},
+    "Find Available VIN":{"main":[[{"node":"Stock Available?","type":"main","index":0}]]},
+    "Stock Available?":{"main":[[{"node":"Allocate VIN To Booking","type":"main","index":0}],[{"node":"Add Waiting List","type":"main","index":0}]]},
+    "Allocate VIN To Booking":{"main":[[{"node":"Update Inventory ALLOCATED","type":"main","index":0}]]},
+    "Update Inventory ALLOCATED":{"main":[[{"node":"Notify WF7 Allocation","type":"main","index":0}]]},
+    "Notify WF7 Allocation":{"main":[[{"node":"Done","type":"main","index":0}]]},
+    "Add Waiting List":{"main":[[{"node":"Done","type":"main","index":0}]]},
+    "Inventory Sync Cron":{"main":[[{"node":"Read Waiting List","type":"main","index":0}]]},
+    "Read Waiting List":{"main":[[{"node":"Attempt Auto Allocate","type":"main","index":0}]]},
+    "Cancellation Webhook":{"main":[[{"node":"Release VIN","type":"main","index":0}]]},
+    "Release VIN":{"main":[[{"node":"Cancel Response","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"}
+}

@@ -1,0 +1,36 @@
+{
+  "name": "AKAR CRM - WF3 Quotation Engine",
+  "nodes": [
+    {"id":"n1","name":"Quotation Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[160,260],"parameters":{"httpMethod":"POST","path":"akar/quotation","responseMode":"responseNode"}},
+    {"id":"n2","name":"Get Lead","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[360,260],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Leads","filtersUI":{"values":[{"lookupColumn":"leadId","lookupValue":"={{$json.body.leadId}}"}]}}},
+    {"id":"n3","name":"Lead In QUOTATION Stage?","type":"n8n-nodes-base.if","typeVersion":2,"position":[560,260],"parameters":{"conditions":{"string":[{"value1":"={{$item(0).$node['Get Lead'].json.stage}}","operation":"equal","value2":"QUOTATION"}]}}},
+    {"id":"n4","name":"Get Price Master","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[760,180],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Inventory","filtersUI":{"values":[{"lookupColumn":"model","lookupValue":"={{$json.body.model}}"},{"lookupColumn":"variant","lookupValue":"={{$json.body.variant}}"}]}}},
+    {"id":"n5","name":"Calculate Final (Strict)","type":"n8n-nodes-base.set","typeVersion":3,"position":[980,180],"parameters":{"keepOnlySet":true,"values":{"number":[
+      {"name":"exShowroom","value":"={{Number($item(0).$node['Get Price Master'].json.exShowroom || 0)}}"},
+      {"name":"discount","value":"={{Number($json.body.corporate || 0)+Number($json.body.exchange || 0)+Number($json.body.loyalty || 0)+Math.min(Number($json.body.additionalDiscount || 0), Number($json.body.additionalDiscountLimit || 0))}}"},
+      {"name":"rto","value":"={{$json.body.rtoType === 'BH' ? Number($json.body.BH_RTO || 0) : ($json.body.rtoType === 'SCRAP' ? Number($json.body.Scrap_RTO || 0) : Number($json.body.RTO || 0))}}"},
+      {"name":"insurance","value":"={{Number($json.body.insuranceBase || 0)+Number($json.body.insuranceAddons || 0)}}"},
+      {"name":"accessories","value":"={{Number($json.body.accessoriesTotal || 0)}}"},
+      {"name":"ew","value":"={{Number($json.body.ew || 0)}}"},
+      {"name":"vas","value":"={{Number($json.body.vas || 0)}}"},
+      {"name":"fastTag","value":"={{Number($json.body.fastTag || 0)}}"},
+      {"name":"tcs","value":"={{Number($json.body.tcs || 0)}}"},
+      {"name":"finalPrice","value":"={{Number($item(0).$node['Get Price Master'].json.exShowroom || 0)- (Number($json.body.corporate || 0)+Number($json.body.exchange || 0)+Number($json.body.loyalty || 0)+Math.min(Number($json.body.additionalDiscount || 0), Number($json.body.additionalDiscountLimit || 0))) + ($json.body.rtoType === 'BH' ? Number($json.body.BH_RTO || 0) : ($json.body.rtoType === 'SCRAP' ? Number($json.body.Scrap_RTO || 0) : Number($json.body.RTO || 0))) + (Number($json.body.insuranceBase || 0)+Number($json.body.insuranceAddons || 0)) + Number($json.body.accessoriesTotal || 0) + Number($json.body.ew || 0) + Number($json.body.vas || 0) + Number($json.body.fastTag || 0) + Number($json.body.tcs || 0)}}"}
+    ],"string":[{"name":"leadId","value":"={{$json.body.leadId}}"},{"name":"model","value":"={{$json.body.model}}"},{"name":"variant","value":"={{$json.body.variant}}"}]}}},
+    {"id":"n6","name":"Save Quotation","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[1200,180],"parameters":{"operation":"append","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Quotations","columns":{"mappingMode":"defineBelow","value":{"quotationId":"={{'Q-'+Date.now()}}","leadId":"={{$json.leadId}}","model":"={{$json.model}}","variant":"={{$json.variant}}","exShowroom":"={{$json.exShowroom}}","discount":"={{$json.discount}}","rto":"={{$json.rto}}","insurance":"={{$json.insurance}}","accessories":"={{$json.accessories}}","finalPrice":"={{$json.finalPrice}}"}}}},
+    {"id":"n7","name":"Notify WF7 Quotation","type":"n8n-nodes-base.executeWorkflow","typeVersion":1,"position":[1400,180],"parameters":{"workflowId":"AKAR-WF7-NOTIFICATIONS","input":"={{ {eventType:'QUOTATION_CREATED', quotation:$json} }}"}},
+    {"id":"n8","name":"Quotation Response","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1600,180],"parameters":{"responseCode":201,"responseBody":"={\"status\":\"Quotation Created - No Manual Override\"}"}},
+    {"id":"n9","name":"Reject Stage","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[760,340],"parameters":{"responseCode":409,"responseBody":"={\"error\":\"Lead not in QUOTATION stage\"}"}}
+  ],
+  "connections":{
+    "Quotation Webhook":{"main":[[{"node":"Get Lead","type":"main","index":0}]]},
+    "Get Lead":{"main":[[{"node":"Lead In QUOTATION Stage?","type":"main","index":0}]]},
+    "Lead In QUOTATION Stage?":{"main":[[{"node":"Get Price Master","type":"main","index":0}],[{"node":"Reject Stage","type":"main","index":0}]]},
+    "Get Price Master":{"main":[[{"node":"Calculate Final (Strict)","type":"main","index":0}]]},
+    "Calculate Final (Strict)":{"main":[[{"node":"Save Quotation","type":"main","index":0}]]},
+    "Save Quotation":{"main":[[{"node":"Notify WF7 Quotation","type":"main","index":0}]]},
+    "Notify WF7 Quotation":{"main":[[{"node":"Quotation Response","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"}
+}

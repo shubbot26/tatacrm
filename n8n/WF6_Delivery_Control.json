@@ -1,0 +1,32 @@
+{
+  "name": "AKAR CRM - WF6 Delivery Control",
+  "nodes": [
+    {"id":"n1","name":"Delivery Request Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[180,220],"parameters":{"httpMethod":"POST","path":"akar/delivery-request","responseMode":"responseNode"}},
+    {"id":"n2","name":"Get Booking","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[390,220],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Bookings","filtersUI":{"values":[{"lookupColumn":"bookingId","lookupValue":"={{$json.body.bookingId}}"}]}}},
+    {"id":"n3","name":"Get Delivery Control","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[600,220],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Delivery_Control","filtersUI":{"values":[{"lookupColumn":"bookingId","lookupValue":"={{$json.body.bookingId}}"}]}}},
+    {"id":"n4","name":"Clearance Check","type":"n8n-nodes-base.if","typeVersion":2,"position":[810,220],"parameters":{"conditions":{"boolean":[
+      {"value1":"={{Number($item(0).$node['Get Booking'].json.pending || 0) === 0}}"},
+      {"value1":"={{$item(0).$node['Get Delivery Control'].json.financeStatus === 'APPROVED'}}"},
+      {"value1":"={{$item(0).$node['Get Delivery Control'].json.accessoriesStatus === 'DONE'}}"},
+      {"value1":"={{$item(0).$node['Get Delivery Control'].json.pdiStatus === 'DONE'}}"}
+    ]}}},
+    {"id":"n5","name":"Generate NOC + Gatepass","type":"n8n-nodes-base.set","typeVersion":3,"position":[1020,120],"parameters":{"keepOnlySet":false,"values":{"string":[{"name":"nocStatus","value":"GENERATED"},{"name":"gatePass","value":"={{'GP-' + Date.now()}}"}]}}},
+    {"id":"n6","name":"Mark Inventory DELIVERED","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[1230,120],"parameters":{"operation":"update","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Inventory","columns":{"mappingMode":"defineBelow","value":{"status":"DELIVERED"}},"matchingColumns":["vin"]}},
+    {"id":"n7","name":"Update Booking DELIVERED","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[1440,120],"parameters":{"operation":"update","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Bookings","columns":{"mappingMode":"defineBelow","value":{"status":"DELIVERED"}},"matchingColumns":["bookingId"]}},
+    {"id":"n8","name":"Notify WF7 Delivery","type":"n8n-nodes-base.executeWorkflow","typeVersion":1,"position":[1650,120],"parameters":{"workflowId":"AKAR-WF7-NOTIFICATIONS","input":"={{ {eventType:'DELIVERY_DONE', bookingId:$json.body.bookingId} }}"}},
+    {"id":"n9","name":"Delivery Success","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1860,120],"parameters":{"responseCode":200,"responseBody":"={\"status\":\"Delivery Completed\"}"}},
+    {"id":"n10","name":"Block Delivery","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1020,320],"parameters":{"responseCode":403,"responseBody":"={\"error\":\"BLOCK DELIVERY: clearance incomplete\"}"}}
+  ],
+  "connections":{
+    "Delivery Request Webhook":{"main":[[{"node":"Get Booking","type":"main","index":0}]]},
+    "Get Booking":{"main":[[{"node":"Get Delivery Control","type":"main","index":0}]]},
+    "Get Delivery Control":{"main":[[{"node":"Clearance Check","type":"main","index":0}]]},
+    "Clearance Check":{"main":[[{"node":"Generate NOC + Gatepass","type":"main","index":0}],[{"node":"Block Delivery","type":"main","index":0}]]},
+    "Generate NOC + Gatepass":{"main":[[{"node":"Mark Inventory DELIVERED","type":"main","index":0}]]},
+    "Mark Inventory DELIVERED":{"main":[[{"node":"Update Booking DELIVERED","type":"main","index":0}]]},
+    "Update Booking DELIVERED":{"main":[[{"node":"Notify WF7 Delivery","type":"main","index":0}]]},
+    "Notify WF7 Delivery":{"main":[[{"node":"Delivery Success","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"}
+}
