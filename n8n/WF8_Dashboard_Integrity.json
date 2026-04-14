@@ -1,0 +1,34 @@
+{
+  "name": "AKAR CRM - WF8 Dashboard + Integrity",
+  "nodes": [
+    {"id":"n1","name":"Hourly Cron","type":"n8n-nodes-base.cron","typeVersion":1,"position":[180,220],"parameters":{"triggerTimes":{"item":[{"mode":"everyX","value":1,"unit":"hours"}]}}},
+    {"id":"n2","name":"Read Leads","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[380,80],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Leads"}},
+    {"id":"n3","name":"Read Bookings","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[380,180],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Bookings"}},
+    {"id":"n4","name":"Read Inventory","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[380,280],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Inventory"}},
+    {"id":"n5","name":"Read Payments","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[380,380],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Payments"}},
+    {"id":"n6","name":"Aggregate KPIs","type":"n8n-nodes-base.set","typeVersion":3,"position":[620,220],"parameters":{"keepOnlySet":true,"values":{"number":[
+      {"name":"leadToBookingPct","value":"={{$items('Read Leads').length === 0 ? 0 : Math.round(($items('Read Bookings').length / $items('Read Leads').length) * 100)}}"},
+      {"name":"bookingToDeliveryPct","value":"={{$items('Read Bookings').length === 0 ? 0 : Math.round(($items('Read Bookings').filter(i => i.json.status === 'DELIVERED').length / $items('Read Bookings').length) * 100)}}"},
+      {"name":"stockAgingHigh","value":"={{$items('Read Inventory').filter(i => Number(i.json.age || 0) > 60).length}}"},
+      {"name":"pendingPayments","value":"={{$items('Read Bookings').filter(i => Number(i.json.pending || 0) > 0).length}}"}
+    ]}}},
+    {"id":"n7","name":"Write Dashboard_Data","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[850,220],"parameters":{"operation":"append","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Dashboard_Data","columns":{"mappingMode":"defineBelow","value":{"timestamp":"={{new Date().toISOString()}}","leadToBookingPct":"={{$json.leadToBookingPct}}","bookingToDeliveryPct":"={{$json.bookingToDeliveryPct}}","stockAgingHigh":"={{$json.stockAgingHigh}}","pendingPayments":"={{$json.pendingPayments}}"}}}},
+    {"id":"n8","name":"Integrity Checks","type":"n8n-nodes-base.set","typeVersion":3,"position":[1080,220],"parameters":{"keepOnlySet":true,"values":{"number":[
+      {"name":"vinWithoutBooking","value":"={{$items('Read Inventory').filter(i => i.json.status === 'ALLOCATED').length - $items('Read Bookings').filter(i => !!i.json.vin && i.json.status !== 'CANCELLED').length}}"},
+      {"name":"hiddenBookings","value":"={{$items('Read Bookings').filter(i => !i.json.leadId).length}}"}
+    ]}}},
+    {"id":"n9","name":"Any Integrity Breach?","type":"n8n-nodes-base.if","typeVersion":2,"position":[1310,220],"parameters":{"conditions":{"number":[{"value1":"={{Number($json.vinWithoutBooking) + Number($json.hiddenBookings)}}","operation":"larger","value2":0}]}}},
+    {"id":"n10","name":"Notify WF7 GM Integrity","type":"n8n-nodes-base.executeWorkflow","typeVersion":1,"position":[1530,180],"parameters":{"workflowId":"AKAR-WF7-NOTIFICATIONS","input":"={{ {eventType:'INTEGRITY_ALERT', metrics:$json} }}"}},
+    {"id":"n11","name":"NoOp","type":"n8n-nodes-base.noOp","typeVersion":1,"position":[1530,300],"parameters":{}}
+  ],
+  "connections":{
+    "Hourly Cron":{"main":[[{"node":"Read Leads","type":"main","index":0},{"node":"Read Bookings","type":"main","index":0},{"node":"Read Inventory","type":"main","index":0},{"node":"Read Payments","type":"main","index":0}]]},
+    "Read Leads":{"main":[[{"node":"Aggregate KPIs","type":"main","index":0}]]},
+    "Aggregate KPIs":{"main":[[{"node":"Write Dashboard_Data","type":"main","index":0}]]},
+    "Write Dashboard_Data":{"main":[[{"node":"Integrity Checks","type":"main","index":0}]]},
+    "Integrity Checks":{"main":[[{"node":"Any Integrity Breach?","type":"main","index":0}]]},
+    "Any Integrity Breach?":{"main":[[{"node":"Notify WF7 GM Integrity","type":"main","index":0}],[{"node":"NoOp","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"}
+}

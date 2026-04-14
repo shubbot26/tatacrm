@@ -1,0 +1,24 @@
+{
+  "name": "AKAR CRM - WF7 Notifications",
+  "nodes": [
+    {"id":"n1","name":"Notification Trigger","type":"n8n-nodes-base.executeWorkflowTrigger","typeVersion":1,"position":[170,220],"parameters":{}},
+    {"id":"n2","name":"Get Users Master","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[380,220],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Users_Master"}},
+    {"id":"n3","name":"Build Recipient Routing","type":"n8n-nodes-base.switch","typeVersion":3,"position":[590,220],"parameters":{"dataType":"string","value1":"={{$json.eventType}}","rules":[{"operation":"equal","value2":"NEW_LEAD"},{"operation":"equal","value2":"FOLLOWUP_ESCALATION"},{"operation":"equal","value2":"PAYMENT_DELAY_ALERT"},{"operation":"equal","value2":"DELIVERY_DONE"}]}},
+    {"id":"n4","name":"Send Telegram Sales/TL/Manager","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[830,120],"parameters":{"method":"POST","url":"={{'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage'}}","sendBody":true,"specifyBody":"json","jsonBody":"={{ {chat_id: $json.telegramChatId, text: 'AKAR: New Lead Assigned'} }}"}},
+    {"id":"n5","name":"Send Manager Alert","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[830,220],"parameters":{"method":"POST","url":"={{'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage'}}","sendBody":true,"specifyBody":"json","jsonBody":"={{ {chat_id: $json.telegramChatId, text: 'AKAR: Follow-up exceeded 3 attempts'} }}"}},
+    {"id":"n6","name":"Send GM Alert","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[830,320],"parameters":{"method":"POST","url":"={{'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage'}}","sendBody":true,"specifyBody":"json","jsonBody":"={{ {chat_id: $json.telegramChatId, text: 'AKAR: Payment delay > 2 days detected'} }}"}},
+    {"id":"n7","name":"Send Delivery Broadcast","type":"n8n-nodes-base.httpRequest","typeVersion":4,"position":[830,420],"parameters":{"method":"POST","url":"={{'https://api.telegram.org/bot' + $env.TELEGRAM_BOT_TOKEN + '/sendMessage'}}","sendBody":true,"specifyBody":"json","jsonBody":"={{ {chat_id: $json.telegramChatId, text: 'AKAR: Delivery completed and gate pass generated'} }}"}},
+    {"id":"n8","name":"Notification End","type":"n8n-nodes-base.noOp","typeVersion":1,"position":[1050,220],"parameters":{}}
+  ],
+  "connections":{
+    "Notification Trigger":{"main":[[{"node":"Get Users Master","type":"main","index":0}]]},
+    "Get Users Master":{"main":[[{"node":"Build Recipient Routing","type":"main","index":0}]]},
+    "Build Recipient Routing":{"main":[[{"node":"Send Telegram Sales/TL/Manager","type":"main","index":0}],[{"node":"Send Manager Alert","type":"main","index":0}],[{"node":"Send GM Alert","type":"main","index":0}],[{"node":"Send Delivery Broadcast","type":"main","index":0}]]},
+    "Send Telegram Sales/TL/Manager":{"main":[[{"node":"Notification End","type":"main","index":0}]]},
+    "Send Manager Alert":{"main":[[{"node":"Notification End","type":"main","index":0}]]},
+    "Send GM Alert":{"main":[[{"node":"Notification End","type":"main","index":0}]]},
+    "Send Delivery Broadcast":{"main":[[{"node":"Notification End","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"}
+}

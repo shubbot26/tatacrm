@@ -1,0 +1,165 @@
+{
+  "name": "AKAR CRM - WF1 Lead Capture",
+  "nodes": [
+    {
+      "id": "n1",
+      "name": "Reception Form Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [200, 260],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "akar/lead-capture",
+        "responseMode": "responseNode"
+      }
+    },
+    {
+      "id": "n2",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [420, 260],
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "string": [
+            { "name": "name", "value": "={{$json.body.name}}" },
+            { "name": "phone", "value": "={{$json.body.phone}}" },
+            { "name": "model", "value": "={{$json.body.model}}" },
+            { "name": "variant", "value": "={{$json.body.variant}}" },
+            { "name": "assignedTo", "value": "={{$json.body.assignedTo}}" },
+            { "name": "stage", "value": "LEAD" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n3",
+      "name": "Find Matching Inventory",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [640, 160],
+      "parameters": {
+        "operation": "read",
+        "documentId": "AKAR_CRM_MASTER_SPREADSHEET_ID",
+        "sheetName": "Inventory",
+        "filtersUI": {
+          "values": [
+            { "lookupColumn": "model", "lookupValue": "={{$json.model}}" },
+            { "lookupColumn": "variant", "lookupValue": "={{$json.variant}}" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n4",
+      "name": "Inventory Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [860, 160],
+      "parameters": {
+        "conditions": {
+          "number": [
+            { "value1": "={{$items('Find Matching Inventory').length}}", "operation": "larger", "value2": 0 }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n5",
+      "name": "Get User Hierarchy",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1080, 80],
+      "parameters": {
+        "operation": "read",
+        "documentId": "AKAR_CRM_MASTER_SPREADSHEET_ID",
+        "sheetName": "Users_Master",
+        "filtersUI": {
+          "values": [
+            { "lookupColumn": "name", "lookupValue": "={{$json.assignedTo}}" },
+            { "lookupColumn": "role", "lookupValue": "Sales" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "n6",
+      "name": "Create Lead Row",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [1300, 80],
+      "parameters": {
+        "operation": "append",
+        "documentId": "AKAR_CRM_MASTER_SPREADSHEET_ID",
+        "sheetName": "Leads",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "leadId": "={{'L-' + Date.now()}}",
+            "name": "={{$item(0).$node['Normalize Input'].json.name}}",
+            "phone": "={{$item(0).$node['Normalize Input'].json.phone}}",
+            "model": "={{$item(0).$node['Normalize Input'].json.model}}",
+            "variant": "={{$item(0).$node['Normalize Input'].json.variant}}",
+            "assignedTo": "={{$item(0).$node['Normalize Input'].json.assignedTo}}",
+            "teamLeader": "={{$json.teamLeader}}",
+            "manager": "={{$json.manager}}",
+            "stage": "LEAD",
+            "followUpCount": 0,
+            "nextFollowUpDate": "={{new Date(Date.now() + 86400000).toISOString().slice(0,10)}}"
+          }
+        }
+      }
+    },
+    {
+      "id": "n7",
+      "name": "Notify WF7",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [1520, 80],
+      "parameters": {
+        "workflowId": "AKAR-WF7-NOTIFICATIONS",
+        "options": {},
+        "input": "={{ {eventType: 'NEW_LEAD', lead: $json} }}"
+      }
+    },
+    {
+      "id": "n8",
+      "name": "Reject - Invalid Model Variant",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1080, 300],
+      "parameters": {
+        "responseCode": 422,
+        "responseBody": "={\"error\":\"Model/Variant not available in Inventory\"}"
+      }
+    },
+    {
+      "id": "n9",
+      "name": "Success Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [1740, 80],
+      "parameters": {
+        "responseCode": 201,
+        "responseBody": "={\"status\":\"Lead Created\"}"
+      }
+    }
+  ],
+  "connections": {
+    "Reception Form Webhook": { "main": [[{ "node": "Normalize Input", "type": "main", "index": 0 }]] },
+    "Normalize Input": { "main": [[{ "node": "Find Matching Inventory", "type": "main", "index": 0 }]] },
+    "Find Matching Inventory": { "main": [[{ "node": "Inventory Valid?", "type": "main", "index": 0 }]] },
+    "Inventory Valid?": {
+      "main": [
+        [{ "node": "Get User Hierarchy", "type": "main", "index": 0 }],
+        [{ "node": "Reject - Invalid Model Variant", "type": "main", "index": 0 }]
+      ]
+    },
+    "Get User Hierarchy": { "main": [[{ "node": "Create Lead Row", "type": "main", "index": 0 }]] },
+    "Create Lead Row": { "main": [[{ "node": "Notify WF7", "type": "main", "index": 0 }]] },
+    "Notify WF7": { "main": [[{ "node": "Success Response", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

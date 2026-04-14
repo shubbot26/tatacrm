@@ -1,0 +1,32 @@
+{
+  "name": "AKAR CRM - WF2 Follow-up Engine",
+  "nodes": [
+    {"id":"n1","name":"Call Update Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[200,180],"parameters":{"httpMethod":"POST","path":"akar/followup-update","responseMode":"responseNode"}},
+    {"id":"n2","name":"Get Lead","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[420,180],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Leads","filtersUI":{"values":[{"lookupColumn":"leadId","lookupValue":"={{$json.body.leadId}}"}]}}},
+    {"id":"n3","name":"Lead Exists?","type":"n8n-nodes-base.if","typeVersion":2,"position":[640,180],"parameters":{"conditions":{"number":[{"value1":"={{$items('Get Lead').length}}","operation":"larger","value2":0}]}}},
+    {"id":"n4","name":"Append Followup Log","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[860,80],"parameters":{"operation":"append","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"FollowUp_Log","columns":{"mappingMode":"defineBelow","value":{"leadId":"={{$json.body.leadId}}","date":"={{new Date().toISOString()}}","remarks":"={{$json.body.remarks}}","nextFollowUp":"={{$json.body.nextFollowUp}}","doneBy":"={{$json.body.doneBy}}"}}}},
+    {"id":"n5","name":"Update Lead Stage/Count","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[1080,80],"parameters":{"operation":"update","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Leads","columns":{"mappingMode":"defineBelow","value":{"followUpCount":"={{Number($item(0).$node['Get Lead'].json.followUpCount || 0) + 1}}","nextFollowUpDate":"={{$json.body.nextFollowUp}}","stage":"={{$json.body.disposition === 'Interested' ? 'QUOTATION' : ($json.body.disposition === 'Not Interested' ? 'CLOSED' : $item(0).$node['Get Lead'].json.stage)}}"}},"matchingColumns":["leadId"],"valueInputMode":"USER_ENTERED"}},
+    {"id":"n6","name":"Escalate >3","type":"n8n-nodes-base.if","typeVersion":2,"position":[1300,80],"parameters":{"conditions":{"number":[{"value1":"={{Number($item(0).$node['Get Lead'].json.followUpCount || 0)+1}}","operation":"larger","value2":3}]}}},
+    {"id":"n7","name":"Notify WF7 Manager Alert","type":"n8n-nodes-base.executeWorkflow","typeVersion":1,"position":[1520,40],"parameters":{"workflowId":"AKAR-WF7-NOTIFICATIONS","input":"={{ {eventType:'FOLLOWUP_ESCALATION', leadId:$json.body.leadId} }}"}},
+    {"id":"n8","name":"OK Response","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1740,120],"parameters":{"responseCode":200,"responseBody":"={\"status\":\"Follow-up updated\"}"}},
+    {"id":"n9","name":"Lead Not Found","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[860,260],"parameters":{"responseCode":404,"responseBody":"={\"error\":\"Lead not found\"}"}},
+    {"id":"n10","name":"2-Hour Reminder Cron","type":"n8n-nodes-base.cron","typeVersion":1,"position":[200,420],"parameters":{"triggerTimes":{"item":[{"mode":"everyX","value":2,"unit":"hours"}]}}},
+    {"id":"n11","name":"Due Followups","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[420,420],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Leads"}},
+    {"id":"n12","name":"Filter Due Today","type":"n8n-nodes-base.if","typeVersion":2,"position":[640,420],"parameters":{"conditions":{"string":[{"value1":"={{$json.nextFollowUpDate}}","operation":"equal","value2":"={{new Date().toISOString().slice(0,10)}}"}]}}},
+    {"id":"n13","name":"Notify WF7 Reminder","type":"n8n-nodes-base.executeWorkflow","typeVersion":1,"position":[860,420],"parameters":{"workflowId":"AKAR-WF7-NOTIFICATIONS","input":"={{ {eventType:'FOLLOWUP_REMINDER', lead:$json} }}"}}
+  ],
+  "connections":{
+    "Call Update Webhook":{"main":[[{"node":"Get Lead","type":"main","index":0}]]},
+    "Get Lead":{"main":[[{"node":"Lead Exists?","type":"main","index":0}]]},
+    "Lead Exists?":{"main":[[{"node":"Append Followup Log","type":"main","index":0}],[{"node":"Lead Not Found","type":"main","index":0}]]},
+    "Append Followup Log":{"main":[[{"node":"Update Lead Stage/Count","type":"main","index":0}]]},
+    "Update Lead Stage/Count":{"main":[[{"node":"Escalate >3","type":"main","index":0}]]},
+    "Escalate >3":{"main":[[{"node":"Notify WF7 Manager Alert","type":"main","index":0}],[{"node":"OK Response","type":"main","index":0}]]},
+    "Notify WF7 Manager Alert":{"main":[[{"node":"OK Response","type":"main","index":0}]]},
+    "2-Hour Reminder Cron":{"main":[[{"node":"Due Followups","type":"main","index":0}]]},
+    "Due Followups":{"main":[[{"node":"Filter Due Today","type":"main","index":0}]]},
+    "Filter Due Today":{"main":[[{"node":"Notify WF7 Reminder","type":"main","index":0}],[]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"}
+}

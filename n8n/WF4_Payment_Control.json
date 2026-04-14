@@ -1,0 +1,25 @@
+{
+  "name": "AKAR CRM - WF4 Payment Control",
+  "nodes": [
+    {"id":"n1","name":"Payment Webhook","type":"n8n-nodes-base.webhook","typeVersion":2,"position":[180,220],"parameters":{"httpMethod":"POST","path":"akar/payment","responseMode":"responseNode"}},
+    {"id":"n2","name":"Get Booking","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[390,220],"parameters":{"operation":"read","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Bookings","filtersUI":{"values":[{"lookupColumn":"bookingId","lookupValue":"={{$json.body.bookingId}}"}]}}},
+    {"id":"n3","name":"Booking Exists?","type":"n8n-nodes-base.if","typeVersion":2,"position":[600,220],"parameters":{"conditions":{"number":[{"value1":"={{$items('Get Booking').length}}","operation":"larger","value2":0}]}}},
+    {"id":"n4","name":"Append Payment","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[820,120],"parameters":{"operation":"append","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Payments","columns":{"mappingMode":"defineBelow","value":{"paymentId":"={{'P-'+Date.now()}}","bookingId":"={{$json.body.bookingId}}","amount":"={{Number($json.body.amount)}}","mode":"={{$json.body.mode}}","date":"={{$json.body.date}}","receivedBy":"={{$json.body.receivedBy}}"}}}},
+    {"id":"n5","name":"Update Booking Totals","type":"n8n-nodes-base.googleSheets","typeVersion":4,"position":[1030,120],"parameters":{"operation":"update","documentId":"AKAR_CRM_MASTER_SPREADSHEET_ID","sheetName":"Bookings","columns":{"mappingMode":"defineBelow","value":{"totalPaid":"={{Number($item(0).$node['Get Booking'].json.totalPaid || 0) + Number($json.body.amount || 0)}}","pending":"={{Number($item(0).$node['Get Booking'].json.amount || 0) - (Number($item(0).$node['Get Booking'].json.totalPaid || 0) + Number($json.body.amount || 0))}}","status":"={{(Number($item(0).$node['Get Booking'].json.amount || 0) - (Number($item(0).$node['Get Booking'].json.totalPaid || 0) + Number($json.body.amount || 0))) <= 0 ? 'PAID' : 'PARTIAL'}}"}},"matchingColumns":["bookingId"]}},
+    {"id":"n6","name":"Delay >2 days?","type":"n8n-nodes-base.if","typeVersion":2,"position":[1240,120],"parameters":{"conditions":{"number":[{"value1":"={{Math.floor((new Date($json.body.date).getTime() - new Date($item(0).$node['Get Booking'].json.createdAt).getTime())/86400000)}}","operation":"larger","value2":2}]}}},
+    {"id":"n7","name":"Notify GM Delay","type":"n8n-nodes-base.executeWorkflow","typeVersion":1,"position":[1450,80],"parameters":{"workflowId":"AKAR-WF7-NOTIFICATIONS","input":"={{ {eventType:'PAYMENT_DELAY_ALERT', bookingId:$json.body.bookingId} }}"}},
+    {"id":"n8","name":"Payment OK","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[1660,140],"parameters":{"responseCode":200,"responseBody":"={\"status\":\"Payment captured\"}"}},
+    {"id":"n9","name":"Reject No Booking","type":"n8n-nodes-base.respondToWebhook","typeVersion":1,"position":[820,300],"parameters":{"responseCode":400,"responseBody":"={\"error\":\"No payment without bookingId\"}"}}
+  ],
+  "connections":{
+    "Payment Webhook":{"main":[[{"node":"Get Booking","type":"main","index":0}]]},
+    "Get Booking":{"main":[[{"node":"Booking Exists?","type":"main","index":0}]]},
+    "Booking Exists?":{"main":[[{"node":"Append Payment","type":"main","index":0}],[{"node":"Reject No Booking","type":"main","index":0}]]},
+    "Append Payment":{"main":[[{"node":"Update Booking Totals","type":"main","index":0}]]},
+    "Update Booking Totals":{"main":[[{"node":"Delay >2 days?","type":"main","index":0}]]},
+    "Delay >2 days?":{"main":[[{"node":"Notify GM Delay","type":"main","index":0}],[{"node":"Payment OK","type":"main","index":0}]]},
+    "Notify GM Delay":{"main":[[{"node":"Payment OK","type":"main","index":0}]]}
+  },
+  "active": false,
+  "settings": {"executionOrder":"v1"}
+}
